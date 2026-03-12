@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>RAG Simulator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+
+body{
+    font-family: Inter, system-ui;
+    background:#0f172a;
+    color:white;
+    margin:0;
+}
+
+.container{
+    max-width:1200px;
+    margin:auto;
+    padding:40px;
+}
+
+h1{
+    text-align:center;
+    font-size:42px;
+    margin-bottom:10px;
+}
+
+.subtitle{
+    text-align:center;
+    opacity:.7;
+    margin-bottom:40px;
+}
+
+.card{
+    background:#1e293b;
+    border-radius:14px;
+    padding:20px;
+    margin-bottom:20px;
+}
+
+.card h2{
+    margin-top:0;
+    font-size:20px;
+}
+
+textarea{
+    width:100%;
+    height:120px;
+    background:#020617;
+    color:white;
+    border:1px solid #334155;
+    border-radius:8px;
+    padding:10px;
+}
+
+button{
+    background:#3b82f6;
+    border:none;
+    padding:12px 18px;
+    border-radius:8px;
+    color:white;
+    cursor:pointer;
+    margin-top:10px;
+}
+
+button:hover{
+    background:#2563eb;
+}
+
+.chunk{
+    background:#020617;
+    padding:10px;
+    border-radius:8px;
+    margin:5px 0;
+}
+
+.vector{
+    font-family:monospace;
+    font-size:13px;
+    opacity:.8;
+}
+
+.result{
+    background:#020617;
+    padding:15px;
+    border-radius:10px;
+    margin-top:10px;
+}
+
+.step{
+    margin-bottom:25px;
+}
+
+.highlight{
+    border-left:4px solid #3b82f6;
+    padding-left:10px;
+}
+
+</style>
+</head>
+
+
+<body>
+
+<div class="container">
+
+<h1>RAG Simulator</h1>
+<div class="subtitle">Visualize Retrieval Augmented Generation step by step</div>
+
+
+<div class="card step">
+
+<h2>1. Create Knowledge Base</h2>
+
+<textarea id="kbInput">
+RAG improves LLM responses by retrieving external knowledge.
+
+Embeddings convert text into vectors that preserve semantic meaning.
+
+Vector databases store embeddings and allow similarity search.
+
+Chunking breaks large documents into smaller pieces.
+
+Top relevant chunks are retrieved and added to the LLM prompt.
+</textarea>
+
+<button onclick="createKB()">Create Knowledge Base</button>
+
+<div id="kbOutput"></div>
+
+</div>
+
+
+
+<div class="card step">
+
+<h2>2. User Query</h2>
+
+<input id="query" style="width:100%;padding:10px;border-radius:8px;border:none;background:#020617;color:white"
+placeholder="Ask a question">
+
+<button onclick="runQuery()">Run RAG</button>
+
+<div id="queryVector"></div>
+
+</div>
+
+
+
+<div class="card step">
+
+<h2>3. Retrieved Chunks (Vector Similarity)</h2>
+
+<div id="retrieved"></div>
+
+</div>
+
+
+
+<div class="card step">
+
+<h2>4. Augmented Prompt</h2>
+
+<div id="augmented"></div>
+
+</div>
+
+
+
+<div class="card step">
+
+<h2>5. Generated Response</h2>
+
+<div id="response"></div>
+
+</div>
+
+</div>
+
+
+
+<script>
+
+let chunks = []
+let vectors = []
+
+
+function fakeEmbedding(text){
+
+    let vector = []
+
+    for(let i=0;i<6;i++){
+        vector.push((Math.random()*1).toFixed(3))
+    }
+
+    return vector
+}
+
+
+function cosineSimilarity(a,b){
+
+    let dot = 0
+    let normA = 0
+    let normB = 0
+
+    for(let i=0;i<a.length;i++){
+
+        dot += a[i]*b[i]
+        normA += a[i]*a[i]
+        normB += b[i]*b[i]
+
+    }
+
+    return dot / (Math.sqrt(normA)*Math.sqrt(normB))
+
+}
+
+
+
+function createKB(){
+
+    let text = document.getElementById("kbInput").value
+
+    chunks = text.split("\n").filter(x=>x.trim()!="")
+
+    vectors = []
+
+    let html = ""
+
+    chunks.forEach((c,i)=>{
+
+        let v = fakeEmbedding(c)
+
+        vectors.push(v)
+
+        html += `
+        <div class="chunk">
+        <div><b>Chunk ${i+1}</b>: ${c}</div>
+        <div class="vector">Embedding: [${v.join(", ")}]</div>
+        </div>
+        `
+    })
+
+    document.getElementById("kbOutput").innerHTML = html
+
+}
+
+
+
+function runQuery(){
+
+    let query = document.getElementById("query").value
+
+    let qVector = fakeEmbedding(query)
+
+    document.getElementById("queryVector").innerHTML = 
+    `<div class="result">Query Embedding: [${qVector.join(", ")}]</div>`
+
+
+    let scores = []
+
+    for(let i=0;i<vectors.length;i++){
+
+        let score = cosineSimilarity(qVector,vectors[i])
+
+        scores.push({index:i,score:score})
+
+    }
+
+
+    scores.sort((a,b)=>b.score-a.score)
+
+    let top = scores.slice(0,3)
+
+
+    let retrievedHTML = ""
+
+    top.forEach(r=>{
+
+        retrievedHTML += `
+        <div class="chunk highlight">
+        ${chunks[r.index]}
+        <div class="vector">Similarity: ${r.score.toFixed(3)}</div>
+        </div>
+        `
+    })
+
+    document.getElementById("retrieved").innerHTML = retrievedHTML
+
+
+    let context = top.map(t=>chunks[t.index]).join("\n")
+
+    let augmentedPrompt = `
+
+Context:
+${context}
+
+User Question:
+${query}
+
+Answer:
+`
+
+    document.getElementById("augmented").innerHTML =
+    `<div class="result"><pre>${augmentedPrompt}</pre></div>`
+
+
+
+    let response = generateAnswer(context,query)
+
+    document.getElementById("response").innerHTML =
+    `<div class="result">${response}</div>`
+
+}
+
+
+
+function generateAnswer(context,query){
+
+    return `
+Simulated LLM Answer:
+
+Based on retrieved knowledge:
+
+${context}
+
+The system retrieved the most relevant chunks from the knowledge base
+and used them to answer your question.
+
+This demonstrates how Retrieval Augmented Generation improves
+accuracy by grounding the response in external knowledge.
+`
+}
+
+
+</script>
+
+
+</body>
+</html>
